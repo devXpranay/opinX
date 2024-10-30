@@ -24,25 +24,3 @@ export const insertTail = async (queueName: string, message: string): Promise<an
         return e;
     }
 }
-
-export const getGlobalVariable = async (key: string): Promise<any> => {
-    try {
-        if(!key) return "required fields missing";
-        const value = await client.get(key);
-        if(!value) return "key not found";
-        return JSON.parse(value);
-    }
-    catch(e) {
-        return e;
-    }
-}
-
-export const setGlobalVariable = async (key: string, value: any): Promise<any> => {
-    try {
-        if(!key || !value) return "required fields missing";
-        await client.set(key, JSON.stringify(value));
-    }
-    catch(e) {
-        return e;
-    }
-}

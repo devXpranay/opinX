@@ -1,4 +1,4 @@
-import { User, TradeMatch, Stock, Event } from "../globalVariables.variable";
+import { User, TradeMatch, Stock, Event, Order } from "../globalVariables.variable";
 import { v4 as uuidv4 } from 'uuid';
 import { getGlobalVariable } from "../talkToRedis";
 
@@ -42,5 +42,17 @@ export const createStock = (stockType: 'YES' | 'NO', quantity: number, price: nu
         price,
         locked: 0,
         userId
+    }
+}
+
+export const createOrder = (userId: string, quantity: number, price: number, stockType: 'YES' | 'NO', orderType: 'BUY' | 'SELL', stockId?: string): Order => {
+    return {
+        transacId: createId('transac_'),
+        userId,
+        quantity,
+        price,
+        stockType,
+        orderType,
+        stockId
     }
 }

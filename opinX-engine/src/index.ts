@@ -1,5 +1,5 @@
 import { processedMessage } from "./globalVariables.variable";
-import { processOrder } from "./processOrder";
+import { process } from "./process";
 import { client, pubsubclient } from "./talkToRedis";
 
 
@@ -16,7 +16,7 @@ async function startEngine () {
 
         while(true) {
             try {
-                const message: processedMessage | undefined = await processOrder('unProcessedQueue');
+                const message: processedMessage | undefined = await process('unProcessedQueue');
                 if(message) {
                     await pubsubclient.publish('backend', JSON.stringify(message.success));
                 }

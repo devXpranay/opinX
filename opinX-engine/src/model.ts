@@ -1,25 +1,24 @@
+export interface Stock {
+    quantity: number;
+    locked: number;
+}
+
 export interface User {
     userId: string;
     email: string;
     name: string;
     wallet: Wallet;
-    stocks: { [eventId: string]: Stock[] };
+    stocks: {
+        [eventId: string]: {
+            yes: {[price: number]: Stock};
+            no: {[price: number]: Stock};
+        }
+    };
 }
 
 export interface Wallet {
-    walletId: string;
     balance: number;
     locked: number;
-}
-
-export interface Stock {
-    stockType: 'YES' | 'NO';
-    stockId: string;
-    quantity: number;
-    price: number;
-    locked: number;
-    eventId: string;
-    userId: string;
 }
 
 export interface Event {
@@ -34,25 +33,39 @@ export interface Event {
     users: string[];
     tradeMatches: { [tradeId: string]: TradeMatch };
     orderBook: {
-        yesSellOrders: { [price: number]: Order[] };
-        noSellOrders: { [price: number]: Order[] };
-        yesBuyOrders: { [price: number]: Order[] };
-        noBuyOrders: { [price: number]: Order[] };
+        yesSellOrders: { [price: number]: {
+            total: number,
+            orders: {
+                [userId: string]: Order
+            }
+        } };
+        yesBuyOrders: { [price: number]: {
+            total: number,
+            orders: {
+                [userId: string]: Order
+            }
+        } };
+        noSellOrders: { [price: number]: {
+            total: number,
+            orders: {
+                [userId: string]: Order
+            }
+        } };
+        noBuyOrders: { [price: number]: {
+            total: number,
+            orders: {
+                [userId: string]: Order
+            }
+        } };
     },
     opinXFunds: number;
 }
 
 export interface Order {
-    transacId: string;
-    price: number;
     quantity: number;
-    userId: string;
-    orderType: 'BUY' | 'SELL';
-    stockType: 'YES' | 'NO';
-    stockId?: string;
     psuedo?: {
         isPsuedo: boolean;
-        userId: string;
+        forUserId: string;
     };
 }
 

@@ -1,27 +1,23 @@
+export interface Stock {
+    quantity: number;
+    locked: number;
+}
 export interface User {
     userId: string;
     email: string;
     name: string;
     wallet: Wallet;
-    stocks: Map<Stock['eventId'], Stock[]>;
+    stocks: {
+        [eventId: string]: {
+            yes: {[price: number]: Stock};
+            no: {[price: number]: Stock};
+        }
+    };
 }
-
 export interface Wallet {
-    walletId: string;
     balance: number;
     locked: number;
 }
-
-export interface Stock {
-    stockType: 'YES' | 'NO';
-    stockId: string;
-    quantity: number;
-    price: number;
-    locked: number;
-    eventId: string;
-    userId: string;
-}
-
 export interface Event {
     eventId: string;
     title: string;
@@ -32,25 +28,42 @@ export interface Event {
     startTime: string;
     endTime: string;
     users: string[];
-    tradeMatches: Map<TradeMatch['tradeId'], TradeMatch>;
+    tradeMatches: { [tradeId: string]: TradeMatch };
     orderBook: {
-        yesSellOrders: Map<Order['price'], Order[]>;
-        noSellOrders: Map<Order['price'], Order[]>;
-        yesBuyOrders: Map<Order['price'], Order[]>;
-        noBuyOrders: Map<Order['price'], Order[]>;
+        yesSellOrders: { [price: number]: {
+            total: number,
+            orders: {
+                [userId: string]: Order
+            }
+        } };
+        yesBuyOrders: { [price: number]: {
+            total: number,
+            orders: {
+                [userId: string]: Order
+            }
+        } };
+        noSellOrders: { [price: number]: {
+            total: number,
+            orders: {
+                [userId: string]: Order
+            }
+        } };
+        noBuyOrders: { [price: number]: {
+            total: number,
+            orders: {
+                [userId: string]: Order
+            }
+        } };
     },
     opinXFunds: number;
 }
-
 export interface Order {
-    transacId: string;
-    price: number;
     quantity: number;
-    userId: string;
-    orderType: 'BUY' | 'SELL';
-    stockType: 'YES' | 'NO';
+    psuedo?: {
+        isPsuedo: boolean;
+        forUserId: string;
+    };
 }
-
 export interface TradeMatch {
     tradeId: string;
     sellerId: string;
@@ -60,7 +73,6 @@ export interface TradeMatch {
     quantity: number;
     price: number;
 }
-
 export interface messageToQueue {
   userId: string;
   price: number;
@@ -70,9 +82,10 @@ export interface messageToQueue {
   eventId: string;
   stockId?: string;
 }
-
 export interface processedMessage {
   eventId: Event['eventId']
   orderBook: Event['orderBook']
   success: boolean
+  message?: string
 }
+export const payout: number = 1000;
