@@ -22,10 +22,10 @@ export const createEvent = async (req: Request, res: Response): Promise<any> => 
     return new Promise((resolve, reject) => {
         pendingRequests.set(requestId, (messageData)=> {
             if(!res.headersSent) {
-                return res.status(200).json({
-                    message: 'Event created successfully',
-                    data: messageData
-                });
+              return res.status(messageData.statusCode).json({
+                message: messageData.data,
+                requestId: messageData.requestId
+            });
             }
         });
     })
@@ -51,14 +51,38 @@ export const getEvent = async (req: Request, res: Response): Promise<any> => {
     return new Promise((resolve, reject) => {
         pendingRequests.set(requestId, (messageData)=> {
             if(!res.headersSent) {
-                return res.status(200).json({
-                    message: 'Event created successfully',
-                    data: messageData
-                });
+              return res.status(messageData.statusCode).json({
+                message: messageData.data,
+                requestId: messageData.requestId
+            });
             }
         });
     })
   } catch (error) {
     return res.status(500).json({ message: 'Error getting event', error });
+  }
+}
+
+export const getAllEvents = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const requestId = uuidv4();
+    const message = {
+      kind: 'getAllEvents',
+      requestId,
+      data: {}
+    }
+    await insertTail('unProcessedQueue', JSON.stringify(message));
+    return new Promise((resolve, reject) => {
+        pendingRequests.set(requestId, (messageData)=> {
+            if(!res.headersSent) {
+                return res.status(messageData.statusCode).json({
+                    message: messageData.data,
+                    requestId: messageData.requestId
+                });
+            }
+        });
+    })
+  } catch (error) {
+    return res.status(500).json({ message: 'Error getting events', error });
   }
 }

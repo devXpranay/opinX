@@ -82,10 +82,9 @@ export interface messageToQueue {
   eventId: string;
   stockId?: string;
 }
-export interface processedMessage {
-  eventId: Event['eventId']
-  orderBook: Event['orderBook']
-  success: boolean
-  message?: string
+export interface messageFromPubSub {
+    statusCode: number;
+    data: any;
+    requestId: string
 }
 export const payout: number = 1000;

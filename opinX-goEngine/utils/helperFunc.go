@@ -2,12 +2,15 @@ package utils
 
 import (
 	"encoding/json"
-	redis "opinX-goEngine/internal/redis"
+	"opinX-goEngine/internal/engine/event"
+	"opinX-goEngine/internal/engine/transact"
+	"opinX-goEngine/internal/engine/user"
 	model "opinX-goEngine/model"
 )
 
 func ParseQueueMessage(message string) (model.MessageFromQueue, error) {
 	var parsedOrder model.MessageFromQueue
+
 	err := json.Unmarshal([]byte(message), &parsedOrder)
 	if err != nil {
 		return model.MessageFromQueue{}, err
@@ -15,44 +18,29 @@ func ParseQueueMessage(message string) (model.MessageFromQueue, error) {
 	return parsedOrder, nil
 }
 
-func ParseDBUsers(value string) (map[string]model.User, error) {
-	var users map[string]model.User
-	err := json.Unmarshal([]byte(value), &users)
+func StringifyPubSubMessage(message model.MessageToPubSub) (string, error) {
+	stringifiedMessage, err := json.Marshal(message)
 	if err != nil {
-		return map[string]model.User{}, err
+		return "", err
 	}
-	return users, nil
+	return string(stringifiedMessage), nil
 }
-
-func ParseDBEvents(value string) (map[string]model.Event, error) {
-	var events map[string]model.Event
-	err := json.Unmarshal([]byte(value), &events)
-	if err != nil {
-		return map[string]model.Event{}, err
+func Redirection(message model.MessageFromQueue) (info model.MessageToPubSub) {
+	switch message.Kind {
+	case "createEvent":
+		info = event.CreateEvent(message)
+	case "getEvent":
+		info = event.GetEvent(message)
+	case "getAllEvents":
+		info = event.GetAllEvents(message)
+	case "createUser":
+		info = user.CreateUser(message)
+	case "onRampMoney":
+		info = user.OnRampMoney(message)
+	case "getUser":
+		info = user.GetUser(message)
+	default:
+		info = transact.ProcessOrder(message)
 	}
-	return events, nil
-}
-
-func GetFromDB(key string) (string, error) {
-	value, err := redis.GET(key)
-	if err != nil {
-		return "Couldn't get from the database", err
-	}
-	return value, nil
-}
-
-func FindUserById(userId string, users map[string]model.User) (model.User, error) {
-	user, ok := users[userId]
-	if !ok {
-		return model.User{}, nil
-	}
-	return user, nil
-}
-
-func FindEventById(eventId string, events map[string]model.Event) (model.Event, error) {
-	event, ok := events[eventId]
-	if !ok {
-		return model.Event{}, nil
-	}
-	return event, nil
+	return info
 }

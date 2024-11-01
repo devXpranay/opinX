@@ -19,9 +19,9 @@ export const createUser = async (req: Request, res: Response): Promise<any> => {
         return new Promise((resolve, reject) => {
             pendingRequests.set(requestId, (messageData)=> {
                 if(!res.headersSent) {
-                    return res.status(200).json({
-                        message: 'Event created successfully',
-                        data: messageData
+                    return res.status(messageData.statusCode).json({
+                        message: messageData.data,
+                        requestId: messageData.requestId
                     });
                 }
             });
@@ -48,9 +48,9 @@ export const onRampMoney = async (req: Request, res: Response): Promise<any> => 
         return new Promise((resolve, reject) => {
             pendingRequests.set(requestId, (messageData)=> {
                 if(!res.headersSent) {
-                    return res.status(200).json({
-                        message: 'Event created successfully',
-                        data: messageData
+                    return res.status(messageData.statusCode).json({
+                        message: messageData.data,
+                        requestId: messageData.requestId
                     });
                 }
             });
@@ -63,7 +63,7 @@ export const onRampMoney = async (req: Request, res: Response): Promise<any> => 
 
 export const getUser = async (req: Request, res: Response): Promise<any> => {
     try {
-        const { userId } = req.body;
+        const userId = req.params.userId;
         if (!userId) return res.status(400).json({ message: 'User ID is required.' });
         const requestId = uuidv4();
         const message = {
@@ -77,9 +77,9 @@ export const getUser = async (req: Request, res: Response): Promise<any> => {
         return new Promise((resolve, reject) => {
             pendingRequests.set(requestId, (messageData)=> {
                 if(!res.headersSent) {
-                    return res.status(200).json({
-                        message: 'Event created successfully',
-                        data: messageData
+                    return res.status(messageData.statusCode).json({
+                        message: messageData.data,
+                        requestId: messageData.requestId
                     });
                 }
             });

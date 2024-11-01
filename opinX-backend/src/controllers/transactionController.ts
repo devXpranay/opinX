@@ -5,28 +5,30 @@ import { v4 as uuidv4 } from 'uuid';
 
 export const stockTransaction = async (req: Request, res: Response): Promise<any> => { 
     try{
-        const { title, description, startTime, endTime } = req.body;
-        if (!title || !description || !startTime || !endTime) {
-        return res.status(400).json({ message: 'Missing required fields' });
+        const { eventId, userId, stockType, orderType, price, quantity } = req.body;
+        if (!eventId || !userId || !stockType || !orderType || !price || !quantity) {
+            return res.status(400).json({ message: 'Missing required fields' });
         }
         const requestId = uuidv4();
         const message = {
-        kind: 'createEvent',
+        kind: 'transact',
         requestId,
         data: {
-            title,
-            description,
-            startTime,
-            endTime
+            eventId,
+            userId,
+            stockType,
+            orderType,
+            price,
+            quantity
         }
         };
         await insertTail('unProcessedQueue', JSON.stringify(message));
         return new Promise((resolve, reject) => {
             pendingRequests.set(requestId, (messageData)=> {
                 if(!res.headersSent) {
-                    return res.status(200).json({
-                        message: 'Event created successfully',
-                        data: messageData
+                    return res.status(messageData.statusCode).json({
+                        message: messageData.data,
+                        requestId: messageData.requestId
                     });
                 }
             });
