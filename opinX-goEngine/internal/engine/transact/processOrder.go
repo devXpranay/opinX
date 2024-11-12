@@ -97,7 +97,38 @@ func ProcessOrder(message model.MessageFromQueue) (info model.MessageToPubSub) {
 			RequestId:  message.RequestId,
 		}
 	}
+	if stockType == "YES" {
+		if orderType == "BUY" {
+			if user.Wallet.Balance < quantityInt*priceInt {
+				return model.MessageToPubSub{
+					StatusCode: 400,
+					Data:       "Insufficient balance",
+					RequestId:  message.RequestId,
+				}
+			}
+			// only for YES
+			matchingYesSellOrders, yesExists := event.OrderBook.YesSellOrders[priceInt]
 
+			if !yesExists {
+				createOrder(stockType, priceInt, quantityInt, user, event)
+				createPsuedoOrder(stockType, priceInt, quantityInt, user, event)
+				global.SetEvent(eventId, event)
+				global.SetUser(userId, user)
+				return model.MessageToPubSub{
+					StatusCode: 200,
+					Data:       event.OrderBook,
+					RequestId:  message.RequestId,
+				}
+			}
+			matchOrders(&matchingYesSellOrders, quantityInt, priceInt, user, event, stockType)
+			return model.MessageToPubSub{
+				StatusCode: 200,
+				Data:       event.OrderBook,
+				RequestId:  message.RequestId,
+			}
+		}
+		// SELL logic for YES
+	}
 	if orderType == "BUY" {
 		if user.Wallet.Balance < quantityInt*priceInt {
 			return model.MessageToPubSub{
@@ -106,9 +137,10 @@ func ProcessOrder(message model.MessageFromQueue) (info model.MessageToPubSub) {
 				RequestId:  message.RequestId,
 			}
 		}
-		matchingYesSellOrders, yesExists := event.OrderBook.YesSellOrders[priceInt]
+		// only for NO
+		matchingNoSellOrders, noExists := event.OrderBook.NoSellOrders[priceInt]
 
-		if !yesExists {
+		if !noExists {
 			createOrder(stockType, priceInt, quantityInt, user, event)
 			createPsuedoOrder(stockType, priceInt, quantityInt, user, event)
 			global.SetEvent(eventId, event)
@@ -119,13 +151,15 @@ func ProcessOrder(message model.MessageFromQueue) (info model.MessageToPubSub) {
 				RequestId:  message.RequestId,
 			}
 		}
-		matchOrders(matchingYesSellOrders, quantityInt, priceInt, user, event)
+		matchOrders(&matchingNoSellOrders, quantityInt, priceInt, user, event, stockType)
 		return model.MessageToPubSub{
 			StatusCode: 200,
 			Data:       event.OrderBook,
 			RequestId:  message.RequestId,
 		}
 	}
+	// SELL logic for NO
+
 	return info
 }
 
@@ -176,7 +210,6 @@ func createOrder(stockType string, price int32, quantity int32, user *model.User
 	event.OpinXFunds += price * quantity
 	updateWallet(user, price, quantity)
 }
-
 func createPsuedoOrder(stockType string, price int32, quantity int32, user *model.User, event *model.Event) {
 	order := model.Order{
 		Quantity: quantity,
@@ -226,37 +259,99 @@ func createPsuedoOrder(stockType string, price int32, quantity int32, user *mode
 		}
 	}
 }
-
-func matchOrders(matchingOrders model.PriceOrder, quantity int32, price int32, user *model.User, event *model.Event) {
+func matchOrders(matchingOrders *model.PriceOrder, quantity int32, price int32, user *model.User, event *model.Event, stockType string) {
 	if matchingOrders.Total == quantity {
-		matchFullOrders(&matchingOrders, quantity, user, event)
+		matchFullOrders(matchingOrders, quantity, user, event, stockType)
 		return
 	}
-	matchPartialOrder(matchingOrders, price, quantity, user, event)
+	matchPartialOrders(matchingOrders, price, quantity, user, event, stockType)
 }
-
-func matchPartialOrder(matchingOrders model.PriceOrder, quantity int32, price int32, user *model.User, event *model.Event) {
-	for sellerId, order := range matchingOrders.Users {
-		if order.Psuedo.IsPsuedo {
-			event.OpinXFunds += order.Quantity * (global.Payout - price)
-			mintStocks(user.UserId, order.Psuedo.ForUserId, event, quantity, order.Quantity, "YES")
-			createTradeMatch(user.UserId, order.Psuedo.ForUserId, order.Quantity, price, "YES", event)
+func matchPartialOrders(matchingOrders *model.PriceOrder, quantity int32, price int32, user *model.User, event *model.Event, stockType string) {
+	remainingQuantity := quantity
+	if matchingOrders.Total < quantity {
+		matchFullOrders(matchingOrders, matchingOrders.Total, user, event, stockType)
+		remainingQuantity -= matchingOrders.Total
+		if stockType == "YES" {
+			createOrder("YES", price, remainingQuantity, user, event)
+			createPsuedoOrder("YES", price, remainingQuantity, user, event)
 		} else {
-			transferStocks(user.UserId, order.Psuedo.ForUserId, quantity, order.Quantity, "YES", event)
-			createTradeMatch(user.UserId, sellerId, order.Quantity, price, "YES", event)
+			createOrder("NO", price, remainingQuantity, user, event)
+			createPsuedoOrder("NO", price, remainingQuantity, user, event)
 		}
-		updateOrder()
+		return
+	}
+	for sellerId, order := range matchingOrders.Users {
+		if remainingQuantity <= 0 {
+			break
+		}
+		if order.Psuedo.IsPsuedo {
+			if order.Quantity > remainingQuantity {
+				event.OpinXFunds += remainingQuantity * (global.Payout - price)
+				if stockType == "YES" {
+					mintStocks(user.UserId, order.Psuedo.ForUserId, event, remainingQuantity, price, "YES")
+					createTradeMatch(user.UserId, order.Psuedo.ForUserId, remainingQuantity, price, "YES", event)
+				} else {
+					mintStocks(order.Psuedo.ForUserId, user.UserId, event, remainingQuantity, price, "NO")
+					createTradeMatch(user.UserId, order.Psuedo.ForUserId, remainingQuantity, price, "NO", event)
+				}
+				order.Quantity -= remainingQuantity
+				remainingQuantity = 0
+			} else {
+				event.OpinXFunds += order.Quantity * (global.Payout - price)
+				if stockType == "YES" {
+					mintStocks(user.UserId, order.Psuedo.ForUserId, event, order.Quantity, price, "YES")
+					createTradeMatch(user.UserId, order.Psuedo.ForUserId, order.Quantity, price, "YES", event)
+				} else {
+					mintStocks(order.Psuedo.ForUserId, user.UserId, event, order.Quantity, price, "NO")
+					createTradeMatch(user.UserId, order.Psuedo.ForUserId, order.Quantity, price, "NO", event)
+				}
+				remainingQuantity -= order.Quantity
+			}
+		} else {
+			if order.Quantity > remainingQuantity {
+				if stockType == "YES" {
+					transferStocks(user.UserId, sellerId, remainingQuantity, price, "YES", event)
+					createTradeMatch(user.UserId, sellerId, remainingQuantity, price, "YES", event)
+				} else {
+					transferStocks(sellerId, user.UserId, remainingQuantity, price, "NO", event)
+					createTradeMatch(user.UserId, sellerId, remainingQuantity, price, "NO", event)
+				}
+				order.Quantity -= remainingQuantity
+				remainingQuantity = 0
+			} else {
+				if stockType == "YES" {
+					transferStocks(user.UserId, sellerId, order.Quantity, price, "YES", event)
+					createTradeMatch(user.UserId, sellerId, order.Quantity, price, "YES", event)
+				} else {
+					transferStocks(sellerId, user.UserId, order.Quantity, price, "NO", event)
+					createTradeMatch(user.UserId, sellerId, order.Quantity, price, "NO", event)
+				}
+				remainingQuantity -= order.Quantity
+			}
+		}
+		event.OrderBook.YesSellOrders[price].Users[sellerId] = order
 	}
 }
-func matchFullOrders(matchingOrders *model.PriceOrder, price int32, user *model.User, event *model.Event) {
+func matchFullOrders(matchingOrders *model.PriceOrder, price int32, user *model.User, event *model.Event, stockType string) {
 	for sellerId, order := range matchingOrders.Users {
 		if order.Psuedo.IsPsuedo {
 			event.OpinXFunds += order.Quantity * (global.Payout - price)
-			mintStocks(user.UserId, order.Psuedo.ForUserId, event, order.Quantity, order.Quantity, "YES")
+			if stockType == "YES" {
+				mintStocks(user.UserId, order.Psuedo.ForUserId, event, order.Quantity, order.Quantity, "YES")
+			} else {
+				mintStocks(order.Psuedo.ForUserId, user.UserId, event, order.Quantity, order.Quantity, "NO")
+			}
+		} else {
+			if stockType == "YES" {
+				transferStocks(user.UserId, sellerId, order.Quantity, order.Quantity, "YES", event)
+			} else {
+				transferStocks(sellerId, user.UserId, order.Quantity, order.Quantity, "NO", event)
+			}
+		}
+		if stockType == "YES" {
 			createTradeMatch(user.UserId, order.Psuedo.ForUserId, order.Quantity, price, "YES", event)
 		} else {
-			transferStocks(user.UserId, order.Psuedo.ForUserId, order.Quantity, order.Quantity, "YES", event)
-			createTradeMatch(user.UserId, sellerId, order.Quantity, price, "YES", event)
+			createTradeMatch(user.UserId, sellerId, order.Quantity, price, "NO", event)
 		}
 	}
 	deleteUserOrder(matchingOrders, price)
@@ -276,27 +371,91 @@ func mintStocks(userId string, psuedoUserId string, event *model.Event, quantity
 	}
 	user, _ := global.GetUser(userId)
 	psuedoUser, _ := global.GetUser(psuedoUserId)
+	user.Stocks[event.EventId] = model.StockType{
+		Yes: make(map[int32]model.Stock),
+		No:  make(map[int32]model.Stock),
+	}
+	psuedoUser.Stocks[event.EventId] = model.StockType{
+		Yes: make(map[int32]model.Stock),
+		No:  make(map[int32]model.Stock),
+	}
 	if stockType == "YES" {
-		user.Stocks[event.EventId].No[price] = noStock
-		psuedoUser.Stocks[event.EventId].Yes[price] = yesStock
-	} else {
+		noStocks, noExists := user.Stocks[event.EventId].No[price]
+		yesStocks, yesExists := psuedoUser.Stocks[event.EventId].Yes[price]
+		if !noExists {
+			user.Stocks[event.EventId].No[price] = noStock
+		} else {
+			noStocks.Quantity += quantity
+			user.Stocks[event.EventId].No[price] = noStocks
+		}
+		if !yesExists {
+			psuedoUser.Stocks[event.EventId].Yes[price] = yesStock
+		} else {
+			yesStocks.Quantity += quantity
+			psuedoUser.Stocks[event.EventId].Yes[price] = yesStocks
+		}
+		return
+	}
+	yesStocks, yesExists := user.Stocks[event.EventId].Yes[price]
+	noStocks, noExists := psuedoUser.Stocks[event.EventId].No[price]
+	if !yesExists {
 		user.Stocks[event.EventId].Yes[price] = yesStock
+	} else {
+		yesStocks.Quantity += quantity
+		user.Stocks[event.EventId].Yes[price] = yesStocks
+	}
+	if !noExists {
 		psuedoUser.Stocks[event.EventId].No[price] = noStock
+	} else {
+		noStocks.Quantity += quantity
+		psuedoUser.Stocks[event.EventId].No[price] = noStocks
 	}
 }
 func transferStocks(buyerId string, sellerId string, quantity int32, price int32, stockType string, event *model.Event) {
 	seller, _ := global.GetUser(sellerId)
 	buyer, _ := global.GetUser(buyerId)
+	if buyer.Stocks == nil {
+		buyer.Stocks[event.EventId] = model.StockType{
+			Yes: make(map[int32]model.Stock),
+			No:  make(map[int32]model.Stock),
+		}
+	}
+	if seller.Stocks == nil {
+		seller.Stocks[event.EventId] = model.StockType{
+			Yes: make(map[int32]model.Stock),
+			No:  make(map[int32]model.Stock),
+		}
+	}
 	if stockType == "YES" {
 		sellerStock := seller.Stocks[event.EventId].Yes[price]
-		buyerStock := buyer.Stocks[event.EventId].Yes[price]
+		buyerStock, exists := buyer.Stocks[event.EventId].Yes[price]
+		if !exists {
+			buyer.Stocks[event.EventId].Yes[price] = model.Stock{
+				Quantity: quantity,
+				Locked:   0,
+			}
+		} else {
+			buyerStock.Quantity += quantity
+		}
 		sellerStock.Locked -= quantity
-		buyerStock.Quantity += quantity
+		if sellerStock.Locked == 0 {
+			delete(seller.Stocks[event.EventId].Yes, price)
+		}
+		return
+	}
+	sellerStock := seller.Stocks[event.EventId].No[price]
+	buyerStock, exists := buyer.Stocks[event.EventId].No[price]
+	if !exists {
+		buyer.Stocks[event.EventId].No[price] = model.Stock{
+			Quantity: quantity,
+			Locked:   0,
+		}
 	} else {
-		sellerStock := seller.Stocks[event.EventId].No[price]
-		buyerStock := buyer.Stocks[event.EventId].No[price]
-		sellerStock.Locked -= quantity
 		buyerStock.Quantity += quantity
+	}
+	sellerStock.Locked -= quantity
+	if sellerStock.Locked == 0 {
+		delete(seller.Stocks[event.EventId].No, price)
 	}
 }
 func createTradeMatch(buyerId string, sellerId string, quantity int32, price int32, stockType string, event *model.Event) {
@@ -313,7 +472,4 @@ func createTradeMatch(buyerId string, sellerId string, quantity int32, price int
 }
 func deleteUserOrder(matchingOrders *model.PriceOrder, price int32) {
 	delete(matchingOrders.Users, string(price))
-}
-func updateOrder() {
-
 }
